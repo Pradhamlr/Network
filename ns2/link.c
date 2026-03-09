@@ -1,102 +1,79 @@
-#include <stdio.h>
-#include <limits.h>
-
-#define MAX 10
-#define INF 9999
-
-void dijkstra(int graph[MAX][MAX], int nodes, int start) {
-    int cost[MAX][MAX], distance[MAX], visited[MAX], next_hop[MAX];
-    int i, j, count, min_distance, next_node;
-
-    // Initialize cost matrix
-    for (i = 0; i < nodes; i++) {
-        for (j = 0; j < nodes; j++) {
-            if (graph[i][j] == 0) {
-                cost[i][j] = INF;
-            } else {
-                cost[i][j] = graph[i][j];
-            }
-        }
-    }
-
-    // Initialize distance, visited, and next_hop arrays
-    for (i = 0; i < nodes; i++) {
-        distance[i] = cost[start][i];
-        visited[i] = 0;
-        if (distance[i] != INF && i != start) {
-            next_hop[i] = i; // Initially, the next hop is the direct neighbor
-        } else {
-            next_hop[i] = -1; // No route yet
-        }
-    }
-
-    distance[start] = 0;
-    visited[start] = 1;
-    count = 1;
-
-    // Main loop to calculate shortest paths
-    while (count < nodes - 1) {
-        min_distance = INF;
-        next_node = -1;
-
-        // Find the node with the smallest tentative distance
-        for (i = 0; i < nodes; i++) {
-            if (!visited[i] && distance[i] < min_distance) {
-                min_distance = distance[i];
-                next_node = i;
-            }
-        }
-
-        if (next_node == -1) {
-            break; // No more reachable nodes
-        }
-
-        visited[next_node] = 1;
-
-        // Update distances for neighbors of the next node
-        for (i = 0; i < nodes; i++) {
-            if (!visited[i] && cost[next_node][i] != INF) {
-                if (distance[next_node] + cost[next_node][i] < distance[i]) {
-                    distance[i] = distance[next_node] + cost[next_node][i];
-                    next_hop[i] = next_hop[next_node]; // Update next hop
-                }
-            }
-        }
-        count++;
-    }
-
-    // Print the results
-    printf("\nRouting Table for Router %d:\n", start + 1);
-    printf("Destination\tCost\tNext Hop\n");
-    for (i = 0; i < nodes; i++) {
-        if (i != start) {
-            printf("%d\t\t%d\t", i + 1, distance[i]);
-            if (next_hop[i] != -1) {
-                printf("%d\n", next_hop[i] + 1);
-            } else {
-                printf("No route\n");
-            }
-        }
-    }
+link-state.tcl
+set ns [new Simulator]
+$ns rtproto LS
+set nf [open ls1.tr w]
+$ns trace-all $nf
+set nr [open ls2.nam w]
+$ns namtrace-all $nr
+proc finish {} {
+ close $nr
+ close $nf
+ global ns nf nr
+ $ns flush-trace
+ exec nam ls2.nam
+ exit 0
 }
-
-int main() {
-    int graph[MAX][MAX], nodes, i, j, start;
-
-    printf("Enter the number of routers: ");
-    scanf("%d", &nodes);
-
-    printf("Enter the cost adjacency matrix (use 0 for no direct link):\n");
-    for (i = 0; i < nodes; i++) {
-        for (j = 0; j < nodes; j++) {
-            scanf("%d", &graph[i][j]);
-        }
-    }
-
-    printf("Enter the source router: ");
-    scanf("%d", &start);
-
-    dijkstra(graph, nodes, start - 1);
-
-    return 0;
+set n0 [$ns node]
+set n1 [$ns node]
+set n2 [$ns node]
+set n3 [$ns node]
+$ns duplex-link $n0 $n1 1Mb 10ms DropTail
+$ns duplex-link $n1 $n2 1Mb 10ms DropTail
+$ns duplex-link $n2 $n3 1Mb 10ms DropTail
+$ns duplex-link $n3 $n0 1Mb 10ms DropTail
+set udp0 [new Agent/UDP]
+$ns attach-agent $n0 $udp0
+set cbr0 [new Application/Traffic/CBR]
+$cbr0 attach-agent $udp0
+$cbr0 set packetSize_ 500
+$cbr0 set interval_ 0.005
+set null0 [new Agent/Null]
+$ns attach-agent $n3 $null0
+set udp1 [new Agent/UDP]
+$ns attach-agent $n1 $udp1
+set cbr1 [new Application/Traffic/CBR]
+$cbr1 attach-agent $udp1
+$cbr1 set packetSize_ 500
+$cbr1 set interval_ 0.005
+set null1 [new Agent/Null]
+$ns attach-agent $n3 $null1
+$ns connect $udp0 $null0
+$ns connect $udp1 $null1
+$ns at .1 "$cbr1 start"
+$ns at .2 "$cbr0 start"
+$ns at 45.0 "$cbr1 stop"
+$ns at 45.1 "$cbr0 stop"
+$ns at 50.0 "finish"
+$ns run
+AWK Program for LS
+BEGIN {
+ print "Performance evaluation"
+send = 0
+ recv = 0
+ dropped = 0
+ rout = 0
+}
+{
+ if ($1 == "+" && (($3 == "0") || ($3 == "1")) && $5 == "cbr") {
+ send++
+ }
+ }
+ if ($1 == "r" && $4 == "3" && $5 == "cbr") {
+ recv++
+ if ($1 == "d") {
+ }
+ dropped++
+ if ($1 == "r" && $5 == "rtProtoLS") {
+ rout++
+ }
+}
+END {
+ print "No of packets Send: " send
+ print "No of packets Received: " recv
+ print "No of packets dropped: " dropped
+ NOH = rout / recv
+ print "No of routing packets: " rout
+ PDR = recv / send
+ print "Normalised overhead: " NOH
+ print "Packet delivery ratio: " PDR
 }
